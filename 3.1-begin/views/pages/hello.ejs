@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+</head>
+<body>
+
+    <% 
+    
+    if ((typeof nume !== 'undefined') && (typeof email !== 'undefined')){
+        console.log('A functionat! Numele este: ' + nume + ' Email-ul este: ' + email );
+    }
+    
+    %>
+    
+
+    <form action="hello"  method="POST">
+        <div>
+            <label for="nume">Nume</label>
+            <input type="text" name="nume">
+        </div>
+        <div>
+            <label for="email">Email</label>
+            <input type="text" name="email" id="email">
+        </div>
+        <button type="submit">Submit</button>
+    </form>
+    
+</body>
+</html>
