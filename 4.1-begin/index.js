@@ -6,10 +6,7 @@ const express = require('express');
 const bodyParser = require('body-parser'); // citeste datele trimise prin POST
 const cookieParser = require('cookie-parser'); // citeste datele din cookies
 const expressSession = require('express-session'); // managementul sesiunilor
-const {
-  check,
-  validationResult
-} = require('express-validator/check'); // validare
+const { check, validationResult } = require('express-validator/check'); // validare
 
 // initializeaza o aplicatie Express
 const app = express();
@@ -19,6 +16,8 @@ let port = process.env.PORT;
 if (port == null || port == "") {
   port = 8000;
 }
+
+const queries = require('./data/db_queries.js');
 
 // seteaza template engine-ul aplicatiei
 app.set('view engine', 'ejs');
@@ -34,6 +33,9 @@ STANDARD MIDDLEWARES
 app.use(bodyParser.urlencoded({
   extended: false
 }));
+
+app.use(bodyParser.json());
+
 
 /**
  * Middleware-ul pentru citirea si parsarea cookie-urilor
@@ -57,62 +59,72 @@ app.use('/static', express.static('public'));
 /*******************   
 CUSTOM MIDDLEWARES
 ********************/
-//emailul are un format valid
-const email_valid = check('email', 'Formatul email-ului e incorect').isEmail();
-//
-const name_valid = check('nume', 'Numele este prea scurt').isLength({
-  min: 3
+
+const email_valid = check('email', 'Formatul email-ului nu este corect').isEmail();
+const name_valid = check('nume', 'Numele este prea scurt').isLength({ min: 3 });
+
+// Custom flash middleware
+app.use( (req, res, next) => {
+  // if there's a flash message in the session request, make it available in the response, then delete it
+  if (req.session.flashMessage){
+    res.locals.flashMessage = req.session.flashMessage;
+    delete req.session.flashMessage;
+  }  
+  next();
 });
-
-const my_middleware = (req, res, next) => {
-  res.locals.temp = req.session.flashMessage;
-  delete req.session.flashMessage;
-  next()
-} 
-
-// ....
 
 /*********   
  RUTE
 **********/
 
-app.get('/', my_middleware,(req, res) => {
-  res.render('pages/index', {
-    nume: req.cookies.nume,
-    welcome: req.session.flashMessage
-  })
+app.get('/', (req, res) => {
+  res.locals.nume = req.cookies.nume;
+  res.render('pages/index');   
 });
 
-app.get('/hello', (req, res) => {  //este GOL si nu are metode si proprietati
+app.get('/hello', (req, res) => {
   res.render('pages/hello', {
-    errors: {},
-    data: {}
+    data: {},
+    errors: {}
   });
 });
 
-app.post('/hello', email_valid, name_valid,
-  (req, res) => {
-
+app.post('/hello', email_valid, name_valid,  
+  (req, res) => {    
+    // pune erorile din req in obiectul errors 
     const errors = validationResult(req);
-    // 1) Daca NU exista erori => redirect cu mesaj flash
-    if (errors.isEmpty()) 
-    {
-      res.cookie('nume', req.body.nume);
-      res.redirect('/');
-    }
-    // 2) Daca exista erori => afiseaza din nou formularul cu mesaje de eroare si datele completate anterior
-    else{
-      res.render('pages/hello', {
-          data: req.body,
-          errors: errors.mapped()
-        });
-      }
-    })
-      
     
+    // 1) Daca nu exista erori => redirect cu mesaj flash
+    if (errors.isEmpty()) { 
+      req.session.flashMessage = 'Excelent, te-ai inscris cu email-ul ' + req.body.email;
+      res.cookie('nume', req.body.nume)
+      res.redirect('/');
+    }  
+     // 2) Daca exista erori => afiseaza din nou formularul cu mesaje de eroare si datele completate
+     else { 
+      res.render('pages/hello', {
+        data: req.body,
+        errors: errors.mapped()
+      });
+    }
+  });
+
 app.post('/goodbye', (req, res) => {
   res.clearCookie('nume');
   res.redirect('/hello');
 })
 
-app.listen(port, () => console.log(`Listening on port: ${port}`));
+
+/*************   
+ SPA - Recipes
+**************/
+
+app.get('/recipes', queries.all_recipes, (req, res) => {  
+  console.log(req.allRecipes);
+  res.render('pages/recipes', {recipes: req.allRecipes});
+});
+
+
+/*************/
+
+app.listen(port, () => console.log(`Listening on port: ${port}`))
