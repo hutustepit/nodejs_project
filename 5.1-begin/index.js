@@ -3,14 +3,16 @@ INITIALIZARI
 ************/
 
 const express = require('express');
-const bodyParser = require('body-parser'); // citeste datele trimise prin POST
+const app = express(); // initializeaza o aplicatie Express
 const cookieParser = require('cookie-parser'); // citeste datele din cookies
 const expressSession = require('express-session'); // managementul sesiunilor
+const multer = require('multer');
+const fs = require('fs');
 const { check, validationResult } = require('express-validator/check'); // validare
-const recipes = require('./routes/recipes');
 
-// initializeaza o aplicatie Express
-const app = express();
+
+
+const recipes = require('./routes/recipes');
 
 // portul default (pentru compatibilitate cu Heroku) 
 let port = process.env.PORT;
@@ -18,7 +20,6 @@ if (port == null || port == "") {
   port = 8000;
 }
 
-const queries = require('./data/recipes_queries.js');
 
 // seteaza template engine-ul aplicatiei
 app.set('view engine', 'ejs');
@@ -28,14 +29,12 @@ STANDARD MIDDLEWARES
 ********************/
 
 /**
- * Middleware-ul pentru parsarea requesturilor transmise prin formulare POST
+ * Middleware core pentru parsarea requesturilor transmise prin formulare POST
  * Efect: pe obiectul req.body vor aparea perechile de chei/valori transmise prin formular
  */
-app.use(bodyParser.urlencoded({
-  extended: false
-}));
+app.use(express.urlencoded({extended: true}));
 
-app.use(bodyParser.json());
+app.use(express.json());
 
 /**
  * Middleware-ul pentru citirea si parsarea cookie-urilor
@@ -63,8 +62,10 @@ CUSTOM MIDDLEWARES
 const email_valid = check('email', 'Formatul email-ului nu este corect').isEmail();
 const name_valid = check('nume', 'Numele este prea scurt').isLength({ min: 3 });
 
-// Middleware custom care gestioneaza mesajele flash: 
-// le pune intai pe res.locals si apoi le sterge din req.session
+/**
+ * Middleware custom care gestioneaza mesajele flash: 
+ * le pune intai pe res.locals si apoi le sterge din req.session
+ */ 
 app.use( (req, res, next) => {
   // if there's a flash message in the session, make it available in the response, then delete it
   if (req.session.flashMessage){
@@ -74,14 +75,34 @@ app.use( (req, res, next) => {
   next();
 });
 
-app.use('/recipes', recipes);
+
+// Configurare Multer - Varianta 2
+const storage = multer.memoryStorage();
+
+function fileFilter(req, file, cb){
+  if (!file.originalname.match(/\.(jpeg|jpg|png|gif)$/)){
+    cb(new Error('Nu poti uploada decat fisiere de imagine'), false);
+  } else {
+    cb(null, true);
+  }
+}
+
+const upload = multer({ storage: storage, 
+  fileFilter: fileFilter, 
+  limits: {fileSize: 300000} 
+ });
 
 /*********   
  RUTE
 **********/
 
+// Incarca rutele pentru "/recipes..."
+app.use('/recipes', recipes);
+
+
 app.get('/', (req, res) => {
   res.locals.nume = req.cookies.nume;
+  res.locals.image = req.cookies.nume;
   res.render('pages/index');   
 });
 
@@ -92,13 +113,18 @@ app.get('/hello', (req, res) => {
   });
 });
 
-app.post('/hello', email_valid, name_valid,  
-  (req, res) => {    
+app.post('/hello', upload.single('foto'),  email_valid, name_valid, (req, res) => {
     // pune erorile din req in obiectul errors 
     const errors = validationResult(req);
 
     // 1) Daca nu exista erori => redirect cu mesaj flash
     if (errors.isEmpty()) { 
+      
+      fs.writeFile('./public/uploads/' + req.file.originalname, req.file.buffer, (err) => {
+        if (err) throw err;
+        console.log('The file has been saved!');
+      });          
+
       req.session.flashMessage = 'Excelent, te-ai inscris cu email-ul ' + req.body.email;
       res.cookie('nume', req.body.nume)
       res.redirect('/');
@@ -110,7 +136,7 @@ app.post('/hello', email_valid, name_valid,
         errors: errors.mapped()
       });
     }
-  });
+}); 
 
 app.post('/goodbye', (req, res) => {
   res.clearCookie('nume');
